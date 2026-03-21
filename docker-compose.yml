@@ -1,0 +1,82 @@
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kalshiquant
+      POSTGRES_USER: kalshi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kalshi}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Schema is applied automatically on first startup
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kalshi -d kalshiquant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Trading Pipeline ──────────────────────────────────────────────────────────
+  trader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Persist FAISS index across container restarts
+      - faiss_data:/app/faiss_data
+    restart: unless-stopped
+    # Override DATABASE_URL to use Docker service name
+    environment:
+      DATABASE_URL: postgresql://kalshi:${POSTGRES_PASSWORD:-kalshi}@postgres:5432/kalshiquant
+
+  # ── Data Retention Cleanup ────────────────────────────────────────────────────
+  # Runs daily at 3am UTC. Deletes rows older than RETENTION_DAYS (default: 90).
+  # Keeps the DB from growing unbounded on long-running EC2 deployments.
+  # Uses pg_cron-compatible SQL via a simple psql loop.
+  retention:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-kalshi}
+      RETENTION_DAYS: ${RETENTION_DAYS:-90}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    entrypoint: >
+      sh -c "while true; do
+        sleep 86400 &&
+        psql -h postgres -U kalshi -d kalshiquant -c \"
+          DELETE FROM latency_metrics  WHERE t_fetched  < NOW() - make_interval(days => $${RETENTION_DAYS});
+          DELETE FROM market_matches   WHERE matched_at < NOW() - make_interval(days => $${RETENTION_DAYS});
+          DELETE FROM trade_decisions  WHERE decided_at < NOW() - make_interval(days => $${RETENTION_DAYS});
+          DELETE FROM news_events      WHERE fetched_at < NOW() - make_interval(days => $${RETENTION_DAYS});
+          VACUUM ANALYZE;
+        \";
+      done"
+
+  # ── Streamlit Dashboard ───────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    env_file: .env
+    depends_on:
+      - postgres
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://kalshi:${POSTGRES_PASSWORD:-kalshi}@postgres:5432/kalshiquant
+
+volumes:
+  pgdata:
+    driver: local
+  faiss_data:
+    driver: local
