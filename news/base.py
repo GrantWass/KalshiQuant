@@ -162,10 +162,13 @@ class NewsSource(ABC):
                     except asyncio.QueueFull:
                         # Pipeline is backed up; drop this item rather than block
                         pass
-            except Exception as exc:
+            except Exception:
                 # Catch all exceptions to keep the source running
                 import logging
+                import traceback
                 logging.getLogger(self.__class__.__name__).error(
-                    "Error fetching from %s: %s", self.__class__.__name__, exc
+                    "Error fetching from %s:\n%s",
+                    self.__class__.__name__,
+                    traceback.format_exc(),
                 )
             await asyncio.sleep(self._poll_interval_seconds)
