@@ -53,7 +53,7 @@ if df.empty:
     st.info("No news items match your filters.")
 else:
     display_df = df.drop(columns=["id", "body"], errors="ignore").copy()
-    display_df.insert(0, "status", display_df["filtered_out"].map({False: '<span style="color:green;font-weight:bold">✓</span>', True: '<span style="color:red;font-weight:bold">✗</span>'}))
+    display_df.insert(0, "status", display_df["filtered_out"].map({False: "✓", True: "✗"}))
 
     selection = st.dataframe(
         display_df,
@@ -62,7 +62,7 @@ else:
         selection_mode="single-row",
         key="news_table",
         column_config={
-            "status":        st.column_config.TextColumn("", width="small", html=True),
+            "status":        st.column_config.TextColumn("", width="small"),
             "fetched_at":    st.column_config.DatetimeColumn("Fetched At", format="HH:mm:ss"),
             "source":        st.column_config.TextColumn("Source", width="small"),
             "headline":      st.column_config.TextColumn("Headline", width="large"),
