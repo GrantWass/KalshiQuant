@@ -1,120 +1,89 @@
 """
-kalshi/auth.py — Kalshi token manager.
+kalshi/auth.py — Kalshi RSA-PSS request signer.
 
-Kalshi auth tokens expire after 30 minutes. This module manages proactive
-token refresh to ensure no in-flight trade ever hits an expired token.
+Kalshi uses RSA key-based authentication. Every request must include three headers:
+  KALSHI-ACCESS-KEY       — the Key ID from your Kalshi account
+  KALSHI-ACCESS-TIMESTAMP — current time in milliseconds (string)
+  KALSHI-ACCESS-SIGNATURE — base64(RSA-PSS-SHA256(timestamp + METHOD + path))
 
-Design:
-  - KalshiTokenManager is a module-level singleton.
-  - A background asyncio task refreshes the token every TOKEN_TTL_SECONDS (1700s = 28 min).
-  - All callers use get_valid_token(), which is instant when the token is fresh.
-  - On any 401 response from the API, call force_refresh() to re-authenticate immediately.
-  - An asyncio.Lock prevents concurrent refresh races (e.g., two requests both
-    hitting 401 at the same time would both try to re-authenticate).
+The path must NOT include query parameters.
+
+Setup:
+  1. Go to Kalshi → Profile → API Keys → Create Key
+  2. Save the private key to a file (e.g. kalshi_private.pem)
+  3. Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_PATH in your .env
 
 Usage:
-    token_manager = KalshiTokenManager()
-    await token_manager.start()              # start background refresh loop
-
-    token = await token_manager.get_valid_token()
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # If a request returns 401:
-    await token_manager.force_refresh()
-    token = await token_manager.get_valid_token()
+    headers = signer.get_auth_headers("GET", "/trade-api/v2/markets")
 """
 
-import asyncio
+import base64
 import logging
 import time
-import aiohttp
+from pathlib import Path
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-class KalshiTokenManager:
+class KalshiSigner:
+    """Signs Kalshi API requests using RSA-PSS/SHA-256."""
+
     def __init__(self) -> None:
-        self._token: str | None = None
-        self._refreshed_at: float = 0.0     # monotonic timestamp of last successful refresh
-        self._lock = asyncio.Lock()
-        self._session: aiohttp.ClientSession | None = None
+        self._private_key = None
 
-    async def start(self) -> None:
-        """Authenticate immediately and start the background refresh loop."""
-        self._session = aiohttp.ClientSession()
-        await self._authenticate()
-        asyncio.create_task(self._refresh_loop(), name="kalshi_token_refresh")
+    def _load_key(self):
+        if self._private_key is not None:
+            return self._private_key
 
-    async def stop(self) -> None:
-        """Close the HTTP session."""
-        if self._session:
-            await self._session.close()
+        if settings.KALSHI_PRIVATE_KEY:
+            # Key content provided directly via env var.
+            # Replace literal \n with real newlines in case the env var was set that way.
+            pem = settings.KALSHI_PRIVATE_KEY.replace("\\n", "\n").encode("utf-8")
+            logger.debug("Kalshi private key loaded from KALSHI_PRIVATE_KEY env var.")
+        else:
+            key_path = Path(settings.KALSHI_PRIVATE_KEY_PATH)
+            if not key_path.exists():
+                raise RuntimeError(
+                    f"Kalshi private key not found. Set KALSHI_PRIVATE_KEY (PEM content) "
+                    f"or KALSHI_PRIVATE_KEY_PATH (path to file) in your .env."
+                )
+            pem = key_path.read_bytes()
+            logger.debug("Kalshi private key loaded from %s", key_path)
 
-    async def get_valid_token(self) -> str:
+        self._private_key = serialization.load_pem_private_key(pem, password=None)
+        return self._private_key
+
+    def get_auth_headers(self, method: str, path: str) -> dict:
         """
-        Return the current valid token.
-        Blocks briefly if a refresh is in progress (asyncio.Lock).
-        Raises RuntimeError if no token has been obtained yet.
-        """
-        async with self._lock:
-            if self._token is None:
-                raise RuntimeError("Token manager not started — call start() first.")
-            return self._token
+        Return the three Kalshi auth headers for a request.
 
-    async def force_refresh(self) -> None:
+        method — HTTP method (GET, POST, DELETE, …)
+        path   — URL path only, no query string (e.g. /trade-api/v2/markets)
         """
-        Re-authenticate immediately. Called by the API client on 401 responses.
-        The lock prevents a thundering herd if multiple concurrent requests all
-        receive 401 at the same time.
-        """
-        async with self._lock:
-            # Another coroutine may have already refreshed by the time we acquire the lock.
-            # Only re-authenticate if the token hasn't been refreshed in the last 5 seconds.
-            if time.monotonic() - self._refreshed_at > 5.0:
-                logger.warning("Forcing token refresh after 401 response.")
-                await self._authenticate()
+        timestamp_ms = str(int(time.time() * 1000))
+        message = (timestamp_ms + method.upper() + path).encode("utf-8")
 
-    async def _refresh_loop(self) -> None:
-        """Background task: sleep TOKEN_TTL_SECONDS then re-authenticate, forever."""
-        while True:
-            await asyncio.sleep(settings.KALSHI_TOKEN_TTL_SECONDS)
-            try:
-                async with self._lock:
-                    await self._authenticate()
-                logger.info("Kalshi token proactively refreshed.")
-            except Exception as exc:
-                logger.error("Token refresh failed: %s — will retry in 60s", exc)
-                await asyncio.sleep(60)
+        key = self._load_key()
+        signature = key.sign(
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
 
-    async def _authenticate(self) -> None:
-        """
-        POST /log_in to obtain a new token.
-        Must be called while holding self._lock (or before the loop starts).
-        """
-        if self._session is None:
-            self._session = aiohttp.ClientSession()
-
-        url = f"{settings.KALSHI_BASE_URL}/log_in"
-        payload = {
-            "email": settings.KALSHI_EMAIL,
-            "password": settings.KALSHI_PASSWORD,
+        return {
+            "KALSHI-ACCESS-KEY": settings.KALSHI_API_KEY_ID,
+            "KALSHI-ACCESS-TIMESTAMP": timestamp_ms,
+            "KALSHI-ACCESS-SIGNATURE": base64.b64encode(signature).decode("utf-8"),
         }
-
-        try:
-            async with self._session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    raise RuntimeError(f"Kalshi login returned {resp.status}: {body}")
-                data = await resp.json()
-                self._token = data.get("token") or data.get("access_token")
-                if not self._token:
-                    raise RuntimeError(f"No token in login response: {data}")
-                self._refreshed_at = time.monotonic()
-                logger.debug("Kalshi token obtained successfully.")
-        except aiohttp.ClientError as exc:
-            raise RuntimeError(f"Kalshi login request failed: {exc}") from exc
 
 
 # Module-level singleton shared by KalshiClient and KalshiWebSocketManager.
-token_manager = KalshiTokenManager()
+signer = KalshiSigner()

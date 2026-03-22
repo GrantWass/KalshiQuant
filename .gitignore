@@ -1,6 +1,10 @@
 # Environment
 .env
 *.env
+.claude
+
+# Kalshi private key
+*.pem
 
 # Python
 __pycache__/

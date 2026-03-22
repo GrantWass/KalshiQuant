@@ -1,18 +1,5 @@
 """
 Page 1 — News Feed
-
-Shows every news item ingested from every source, ordered by fetch time.
-Color coding:
-  Green row  = item passed event detection and continued downstream
-  Red row    = item was filtered out (event_score too low or duplicate)
-
-Columns:
-  fetched_at    — when the pipeline received it
-  source        — which source produced it (nws, gdelt, rss_ap, etc.)
-  headline      — the headline text (click URL if available)
-  event_score   — combined detection score (None = deduped before scoring)
-  filtered_out  — True/False
-  filter_reason — why it was filtered (if applicable)
 """
 
 import time
@@ -21,9 +8,9 @@ from dashboard.db_queries import get_recent_news, get_news_source_counts
 
 st.set_page_config(layout="wide")
 st.title("News Feed")
-st.caption("All news items ingested from all sources. Green = passed detection. Red = filtered out.")
+st.caption("All news items ingested from all sources. Click a row to see details.")
 
-# ── Source summary ─────────────────────────────────────────────────────────────
+# ── Source summary metrics ──────────────────────────────────────────────────────
 counts = get_news_source_counts()
 if not counts.empty:
     cols = st.columns(len(counts))
@@ -35,35 +22,87 @@ if not counts.empty:
         )
     st.divider()
 
-# ── News table ─────────────────────────────────────────────────────────────────
-df = get_recent_news(limit=200)
+# ── Filters ─────────────────────────────────────────────────────────────────────
+fc1, fc2, fc3 = st.columns([2, 2, 1])
 
+with fc1:
+    all_sources = sorted(counts["source"].tolist()) if not counts.empty else []
+    selected_sources = st.multiselect("Sources", all_sources, default=all_sources, placeholder="All sources")
+
+with fc2:
+    status_filter = st.radio("Status", ["All", "Passed", "Filtered"], horizontal=True)
+
+with fc3:
+    limit = st.selectbox("Show", [100, 200, 500], index=0)
+
+st.divider()
+
+# ── Load and filter data ────────────────────────────────────────────────────────
+df = get_recent_news(limit=limit)
+
+if not df.empty:
+    if selected_sources:
+        df = df[df["source"].isin(selected_sources)]
+    if status_filter == "Passed":
+        df = df[~df["filtered_out"]]
+    elif status_filter == "Filtered":
+        df = df[df["filtered_out"]]
+
+# ── Table ───────────────────────────────────────────────────────────────────────
 if df.empty:
-    st.info("No news items yet. The pipeline may still be starting up.")
+    st.info("No news items match your filters.")
 else:
-    # Color rows: red for filtered, green for passed
-    def _row_style(row):
-        color = "#ffcccc" if row["filtered_out"] else "#ccffcc"
-        return [f"background-color: {color}"] * len(row)
+    display_df = df.drop(columns=["id", "body"], errors="ignore").copy()
+    display_df.insert(0, "status", display_df["filtered_out"].map({False: '<span style="color:green;font-weight:bold">✓</span>', True: '<span style="color:red;font-weight:bold">✗</span>'}))
 
-    styled = df.style.apply(_row_style, axis=1)
-
-    st.dataframe(
-        styled,
+    selection = st.dataframe(
+        display_df,
         use_container_width=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="news_table",
         column_config={
+            "status":        st.column_config.TextColumn("", width="small", html=True),
             "fetched_at":    st.column_config.DatetimeColumn("Fetched At", format="HH:mm:ss"),
             "source":        st.column_config.TextColumn("Source", width="small"),
             "headline":      st.column_config.TextColumn("Headline", width="large"),
             "event_score":   st.column_config.NumberColumn("Score", format="%.3f"),
-            "keyword_score": st.column_config.NumberColumn("KW Score", format="%.3f"),
-            "nlp_score":     st.column_config.NumberColumn("NLP Score", format="%.3f"),
-            "filtered_out":  st.column_config.CheckboxColumn("Filtered"),
-            "filter_reason": st.column_config.TextColumn("Filter Reason"),
+            "keyword_score": st.column_config.NumberColumn("KW", format="%.3f"),
+            "nlp_score":     st.column_config.NumberColumn("NLP", format="%.3f"),
+            "filtered_out":  None,
+            "filter_reason": st.column_config.TextColumn("Reason"),
             "url":           st.column_config.LinkColumn("URL"),
         },
         hide_index=True,
     )
 
-time.sleep(5)
+    # ── Drill-down panel ────────────────────────────────────────────────────────
+    rows = selection.selection.rows
+    if rows:
+        row = df.iloc[rows[0]]
+        st.divider()
+        st.subheader("Item Detail")
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**{row['headline']}**")
+            if row.get("url"):
+                st.markdown(f"[Open article]({row['url']})")
+            st.caption(f"Source: {row['source']} · Fetched: {row['fetched_at']}")
+            if row.get("body"):
+                with st.expander("Full body text"):
+                    st.write(row["body"])
+            if row.get("filter_reason"):
+                st.warning(f"Filtered: {row['filter_reason']}")
+
+        with col2:
+            st.metric("Event Score",   f"{row['event_score']:.3f}"   if row.get('event_score')   is not None else "—")
+            st.metric("Keyword Score", f"{row['keyword_score']:.3f}" if row.get('keyword_score') is not None else "—")
+            st.metric("NLP Score",     f"{row['nlp_score']:.3f}"     if row.get('nlp_score')     is not None else "—")
+
+try:
+    refresh = 10 if selection.selection.rows else 5
+except Exception:
+    refresh = 5
+time.sleep(refresh)
 st.rerun()

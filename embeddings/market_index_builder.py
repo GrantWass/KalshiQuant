@@ -36,17 +36,10 @@ logger = logging.getLogger(__name__)
 
 
 def _build_embedding_text(market: Market) -> str:
-    """
-    Construct the text to embed for a market.
-    More context = better semantic matching. Include all informative fields.
-    """
+    """Construct the text to embed for a market."""
     parts = [market.title]
     if market.subtitle:
         parts.append(market.subtitle)
-    if market.category:
-        parts.append(f"Category: {market.category}")
-    if market.tags:
-        parts.append(f"Tags: {', '.join(market.tags)}")
     return ". ".join(parts)
 
 
@@ -56,8 +49,6 @@ def _build_metadata(market: Market, faiss_id: int) -> dict:
         "ticker": market.ticker,
         "title": market.title,
         "subtitle": market.subtitle,
-        "category": market.category,
-        "tags": market.tags,
         "close_time": market.close_time.isoformat() if market.close_time else None,
         "faiss_id": faiss_id,
         "embedding_text": _build_embedding_text(market),
@@ -74,6 +65,21 @@ async def build_index(client: KalshiClient) -> None:
 
     if not markets:
         logger.warning("No open markets returned from Kalshi. Index not built.")
+        return
+
+    # Filter out multi-leg parlay markets — bundled sports parlays with no
+    # meaningful single title for semantic matching against news headlines.
+    markets = [m for m in markets if not m.is_parlay]
+    logger.info("After parlay filter: %d markets.", len(markets))
+
+    # Filter out markets with no price data — these are inactive or not yet
+    # launched and cannot be traded. Keeping only markets with a bid or ask
+    # dramatically reduces the index to actively priced markets.
+    markets = [m for m in markets if m.yes_bid_dollars is not None or m.yes_ask_dollars is not None]
+    logger.info("After liquidity filter: %d priced markets.", len(markets))
+
+    if not markets:
+        logger.warning("No markets remain after filtering. Index not built.")
         return
 
     texts = [_build_embedding_text(m) for m in markets]

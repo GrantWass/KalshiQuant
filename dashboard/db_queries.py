@@ -40,9 +40,11 @@ def get_recent_news(limit: int = 200) -> pd.DataFrame:
     return _query_df(
         """
         SELECT
+            id,
             fetched_at AT TIME ZONE 'UTC' AS fetched_at,
             source,
             headline,
+            body,
             url,
             ROUND(event_score::numeric, 3)   AS event_score,
             ROUND(keyword_score::numeric, 3) AS keyword_score,
@@ -95,9 +97,12 @@ def get_detection_detail(limit: int = 100) -> pd.DataFrame:
     return _query_df(
         """
         SELECT
+            id,
             fetched_at AT TIME ZONE 'UTC' AS fetched_at,
             source,
             headline,
+            body,
+            url,
             ROUND(keyword_score::numeric, 3) AS keyword_score,
             ROUND(nlp_score::numeric, 3)     AS nlp_score,
             ROUND(event_score::numeric, 3)   AS event_score,
@@ -118,20 +123,64 @@ def get_recent_matches(limit: int = 100) -> pd.DataFrame:
     return _query_df(
         """
         SELECT
+            mm.id,
             mm.matched_at AT TIME ZONE 'UTC' AS matched_at,
             ne.source,
             ne.headline,
+            ne.body,
+            ne.url,
             mm.market_ticker,
             mm.market_title,
-            mm.market_category,
-            ROUND(mm.similarity_score::numeric, 3) AS similarity_score
+            ROUND(mm.similarity_score::numeric, 3) AS similarity_score,
+            td.action          AS decision_action,
+            td.side            AS decision_side,
+            td.contracts       AS decision_contracts,
+            td.price_cents     AS decision_price_cents,
+            ROUND(td.edge::numeric, 3)        AS decision_edge,
+            ROUND(td.confidence::numeric, 3)  AS decision_confidence,
+            td.rejection_reasons
         FROM market_matches mm
         JOIN news_events ne ON ne.id = mm.news_event_id
+        LEFT JOIN trade_decisions td ON td.market_ticker = mm.market_ticker
+            AND td.decided_at BETWEEN mm.matched_at AND mm.matched_at + INTERVAL '30 seconds'
         ORDER BY mm.matched_at DESC
         LIMIT %s
         """,
         (limit,),
     )
+
+
+def get_pipeline_funnel() -> dict:
+    """Today's counts at each pipeline stage for the overview page."""
+    df = _query_df(
+        """
+        SELECT
+            COUNT(*)                                                    AS news_total,
+            COUNT(*) FILTER (WHERE NOT filtered_out AND event_score IS NOT NULL) AS events_passed,
+            COUNT(*) FILTER (WHERE filtered_out)                        AS news_filtered
+        FROM news_events
+        WHERE fetched_at >= CURRENT_DATE
+        """
+    )
+    matches = _query_df(
+        "SELECT COUNT(*) AS matches FROM market_matches WHERE matched_at >= CURRENT_DATE"
+    )
+    decisions = _query_df(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE action = 'EXECUTE') AS executed,
+            COUNT(*) FILTER (WHERE action = 'REJECT')  AS rejected
+        FROM trade_decisions WHERE decided_at >= CURRENT_DATE
+        """
+    )
+    result = {}
+    if not df.empty:
+        result.update(df.iloc[0].to_dict())
+    if not matches.empty:
+        result["matches"] = int(matches.iloc[0]["matches"])
+    if not decisions.empty:
+        result.update(decisions.iloc[0].to_dict())
+    return result
 
 
 # ── Trade Decisions ───────────────────────────────────────────────────────────

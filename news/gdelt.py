@@ -33,6 +33,7 @@ Rate limit: GDELT has undocumented rate limits. We add a 5s delay between
 import csv
 import io
 import logging
+import re
 import zipfile
 from datetime import datetime, timezone
 from typing import AsyncIterator
@@ -64,8 +65,12 @@ _RELEVANT_THEMES = {
 # GKG CSV column indices (V2.1 format)
 # Full spec: http://data.gdeltproject.org/documentation/GDELT-Global_Knowledge_Graph_Codebook-V2.1.pdf
 _COL_DATE = 0          # YYYYMMDDHHMMSS
+_COL_SOURCE_COMMON = 3 # Human-readable source name e.g. "BBC News"
 _COL_SOURCE_URL = 4    # Article URL
 _COL_THEMES = 7        # Semicolon-separated theme codes
+_COL_LOCATIONS = 9     # Semicolon-separated locations
+_COL_PERSONS = 11      # Semicolon-separated person names
+_COL_ORGS = 13         # Semicolon-separated organization names
 _COL_TONE = 15         # "tone,positive,negative,polarity,..." (comma-separated)
 
 
@@ -180,11 +185,34 @@ class GDELTSource(NewsSource):
         date_str = row[_COL_DATE].strip() if _COL_DATE < len(row) else ""
         published_at = _parse_gdelt_date(date_str) or datetime.utcnow()
 
-        # Build a headline from the URL domain + matched themes
         matched = themes.intersection(_RELEVANT_THEMES)
-        theme_str = ", ".join(sorted(matched)[:3])
-        domain = url.split("/")[2] if "/" in url else url
-        headline = f"[GDELT] {theme_str} — {domain}"
+
+        # Extract persons, orgs, locations from their columns
+        persons = _parse_list(row, _COL_PERSONS, limit=2)
+        orgs    = _parse_list(row, _COL_ORGS, limit=2)
+        locs    = _parse_list(row, _COL_LOCATIONS, limit=1, field_index=1)  # location name is field 1
+
+        # Try to extract a headline from the URL slug first
+        slug_headline = _headline_from_url(url)
+
+        if slug_headline:
+            # Enrich slug with key entities if they're not already in it
+            entities = persons + orgs + locs
+            extras = [e for e in entities if e.lower() not in slug_headline.lower()]
+            if extras:
+                headline = f"{slug_headline} ({', '.join(extras[:2])})"
+            else:
+                headline = slug_headline
+        else:
+            # Fall back to building from entities + themes
+            parts = persons + orgs + locs
+            if parts:
+                theme_hint = _theme_label(matched)
+                headline = f"{', '.join(parts[:3])} — {theme_hint}"
+            else:
+                theme_hint = _theme_label(matched)
+                domain = url.split("/")[2] if "/" in url else url
+                headline = f"{theme_hint} ({domain})"
 
         # Extract overall tone score for sentiment signal
         tone_raw = row[_COL_TONE].strip() if _COL_TONE < len(row) else ""
@@ -207,9 +235,123 @@ class GDELTSource(NewsSource):
             raw_payload={
                 "themes": list(matched),
                 "tone": tone_score,
+                "persons": persons,
+                "orgs": orgs,
+                "locations": locs,
                 "date_str": date_str,
             },
         )
+
+
+def _headline_from_url(url: str) -> str:
+    """
+    Extract a human-readable headline from a URL slug.
+
+    Most news URLs look like:
+      .../federal-reserve-raises-rates-25-basis-points/
+      .../2025/03/21/ukraine-war-ceasefire-talks-resume/
+
+    Strategy:
+      - Take the last non-empty path segment
+      - Strip numeric IDs at the end (e.g. -12345678)
+      - Replace hyphens/underscores with spaces
+      - Title-case the result
+      - Discard if too short or looks like a bare date / category slug
+    """
+    try:
+        path = url.split("?")[0].rstrip("/")
+        segments = [s for s in path.split("/") if s]
+        if not segments:
+            return ""
+        slug = segments[-1]
+
+        # Skip pure date segments like "20250321" or "2025"
+        if re.fullmatch(r"\d{4,14}", slug):
+            # Try the second-to-last segment
+            slug = segments[-2] if len(segments) >= 2 else ""
+
+        if not slug:
+            return ""
+
+        # Remove trailing numeric IDs: "breaking-news-story-1234567"
+        slug = re.sub(r"[-_]\d{5,}$", "", slug)
+
+        # Replace separators with spaces and title-case
+        headline = re.sub(r"[-_]+", " ", slug).strip().title()
+
+        # Discard if too short to be a real headline
+        if len(headline) < 20 or len(headline.split()) < 4:
+            return ""
+
+        return headline
+    except Exception:
+        return ""
+
+
+def _parse_list(row: list[str], col: int, limit: int, field_index: int = 0) -> list[str]:
+    """
+    Parse a semicolon-delimited GDELT column where each entry may itself be
+    comma-delimited. Returns up to `limit` cleaned values from `field_index`.
+
+    Example (persons col): "Jerome Powell;Joe Biden" → ["Jerome Powell", "Joe Biden"]
+    Example (locations col): "1#Florida#US#...;2#Ukraine#UA#..." with field_index=1
+      → ["Florida", "Ukraine"]
+    """
+    if col >= len(row):
+        return []
+    raw = row[col].strip()
+    if not raw:
+        return []
+    results = []
+    for entry in raw.split(";"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        parts = entry.split("#") if "#" in entry else [entry]
+        if field_index < len(parts):
+            val = parts[field_index].strip().title()
+            if val and val not in results:
+                results.append(val)
+        if len(results) >= limit:
+            break
+    return results
+
+
+# Map theme codes to readable labels for fallback headline construction
+_THEME_LABELS = {
+    "WEATHER_HURRICANE": "Hurricane",
+    "WEATHER_TORNADO": "Tornado",
+    "WEATHER_FLOOD": "Flooding",
+    "WEATHER_WILDFIRE": "Wildfire",
+    "EARTHQUAKE": "Earthquake",
+    "NATURAL_DISASTER": "Natural Disaster",
+    "ELECTION": "Election",
+    "ELECTIONS": "Election",
+    "MILITARY": "Military Conflict",
+    "COUP": "Coup",
+    "PROTEST": "Protest",
+    "CIVIL_UNREST": "Civil Unrest",
+    "ECON_INFLATION": "Inflation",
+    "ECON_UNEMPLOYMENT": "Unemployment",
+    "ECON_TRADE": "Trade",
+    "ECON_TAXATION": "Tax Policy",
+    "CENTRAL_BANK": "Central Bank",
+    "INTEREST_RATE": "Interest Rates",
+    "RECESSION": "Recession",
+    "STOCK_MARKET": "Stock Market",
+    "SPORTS_NFL": "NFL",
+    "SPORTS_NBA": "NBA",
+    "SPORTS": "Sports",
+    "POLITICAL": "Politics",
+    "GOVERNMENT_OFFICIAL": "Government",
+}
+
+def _theme_label(matched: set[str]) -> str:
+    """Return the most specific readable label for the matched theme set."""
+    for theme in sorted(matched):
+        if theme in _THEME_LABELS:
+            return _THEME_LABELS[theme]
+    return ", ".join(sorted(matched)[:2])
 
 
 def _parse_gdelt_date(date_str: str) -> datetime | None:

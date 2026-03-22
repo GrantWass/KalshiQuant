@@ -20,6 +20,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="ignore",
     )
 
     # ── Kalshi API ────────────────────────────────────────────────────────────
@@ -28,14 +29,13 @@ class Settings(BaseSettings):
     # WebSocket endpoint for real-time market price updates.
     KALSHI_WS_URL: str = "wss://api.elections.kalshi.com/trade-api/v2/ws"
 
-    # Kalshi account credentials (required).
-    KALSHI_EMAIL: str = ""
-    KALSHI_PASSWORD: str = ""
-
-    # Kalshi auth tokens expire after 30 minutes (1800s).
-    # We refresh proactively at 28 min (1700s) so no in-flight trade ever
-    # hits an expired token. Do not raise above 1750s.
-    KALSHI_TOKEN_TTL_SECONDS: int = 1700
+    # Kalshi API key credentials (required).
+    # Generate at: Kalshi → Profile → API Keys → Create Key
+    KALSHI_API_KEY_ID: str = ""
+    # Provide either the key content or a path to the PEM file.
+    # KALSHI_PRIVATE_KEY takes precedence if both are set.
+    KALSHI_PRIVATE_KEY: str = ""          # PEM content as a string
+    KALSHI_PRIVATE_KEY_PATH: str = "kalshi_private.pem"  # fallback: path to file
 
     # Maximum concurrent HTTP requests to Kalshi API.
     # Kalshi rate limits are not publicly documented; 10 is a safe conservative limit.

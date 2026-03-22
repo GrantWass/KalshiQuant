@@ -60,7 +60,6 @@ from config.settings import settings
 from db.pool import init_pool, close_pool
 from db.repositories.metrics import insert_pipeline_run, update_pipeline_heartbeat
 from embeddings.market_index_builder import load_or_build_index, refresh_loop
-from kalshi.auth import token_manager
 from kalshi.client import KalshiClient
 from kalshi.websocket import KalshiWebSocketManager
 from news.gdelt import GDELTSource
@@ -118,8 +117,7 @@ async def run() -> None:
     run_id = await insert_pipeline_run()
     logger.info("Pipeline run ID: %s", run_id)
 
-    # ── Step 2: Kalshi authentication ─────────────────────────────────────────
-    await token_manager.start()
+    # ── Step 2: Kalshi client ─────────────────────────────────────────────────
     client = KalshiClient()
 
     # ── Step 3: FAISS index ───────────────────────────────────────────────────
@@ -190,7 +188,6 @@ async def run() -> None:
 async def shutdown() -> None:
     """Graceful shutdown: close connections."""
     logger.info("Shutting down...")
-    await token_manager.stop()
     await close_pool()
 
 

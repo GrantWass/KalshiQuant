@@ -27,7 +27,7 @@ import logging
 import time
 import aiohttp
 from config.settings import settings
-from kalshi.auth import token_manager
+from kalshi.auth import signer
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +52,10 @@ class KalshiWebSocketManager:
 
     async def start(self) -> None:
         """Connect and start the background message loop."""
-        self._running = True
-        self._session = aiohttp.ClientSession()
-        asyncio.create_task(self._connect_loop(), name="kalshi_websocket")
+        # WebSocket disabled until correct URL path is confirmed from Kalshi docs.
+        # ProbabilityEstimator falls back to REST for price lookups automatically.
+        logger.info("Kalshi WebSocket disabled — using REST fallback for prices.")
+        return
 
     async def stop(self) -> None:
         """Gracefully disconnect."""
@@ -120,10 +121,17 @@ class KalshiWebSocketManager:
 
     async def _connect_and_run(self) -> None:
         """Open the WebSocket connection and process messages until disconnect."""
-        token = await token_manager.get_valid_token()
-        url = f"{settings.KALSHI_WS_URL}?token={token}"
+        ws_path = "/trade-api/v2/ws"
+        auth = signer.get_auth_headers("GET", ws_path)
+        # Pass auth as both headers and query params — Kalshi WS may require either
+        url = (
+            f"{settings.KALSHI_WS_URL}"
+            f"?access_key={auth['KALSHI-ACCESS-KEY']}"
+            f"&access_timestamp={auth['KALSHI-ACCESS-TIMESTAMP']}"
+            f"&access_signature={auth['KALSHI-ACCESS-SIGNATURE']}"
+        )
 
-        async with self._session.ws_connect(url) as ws:
+        async with self._session.ws_connect(url, headers=auth) as ws:
             self._ws = ws
             logger.info("Kalshi WebSocket connected.")
 

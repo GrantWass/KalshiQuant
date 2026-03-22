@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS news_events (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- Source identity
-    source          VARCHAR(32)  NOT NULL,   -- 'gdelt' | 'rss_ap' | 'rss_bbc' | 'nws'
+    source          VARCHAR(32)  NOT NULL,   -- 'gdelt' | 'rss_bbc' | 'rss_npr' | 'nws'
     source_id       VARCHAR(512) NOT NULL,   -- source-native ID for deduplication
 
     -- Content

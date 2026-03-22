@@ -12,29 +12,57 @@ from pydantic import BaseModel, Field
 class Market(BaseModel):
     """A single Kalshi prediction market."""
 
-    ticker: str                          # unique market identifier, e.g. "KXBTC-25JAN-T50001"
-    title: str                           # human-readable title
-    subtitle: str | None = None          # additional context
-    category: str | None = None          # broad category (e.g. "Economics", "Weather")
-    tags: list[str] = Field(default_factory=list)
+    ticker: str
+    event_ticker: str | None = None
+    title: str = ""
+    subtitle: str | None = None
+    status: str = ""
 
-    status: str                          # "open" | "closed" | "settled"
-    yes_bid: int | None = None           # best YES bid in cents
-    yes_ask: int | None = None           # best YES ask in cents
-    last_price: int | None = None        # last traded YES price in cents
-    close_time: datetime | None = None   # when the market closes to new orders
+    # Prices returned as dollar strings e.g. "0.5600" = 56 cents
+    yes_bid_dollars: str | None = None
+    yes_ask_dollars: str | None = None
+    last_price_dollars: str | None = None
+
+    close_time: datetime | None = None
     expiration_time: datetime | None = None
+    latest_expiration_time: datetime | None = None
+
+    # Non-empty for multi-leg parlay markets — used to filter them out
+    mve_collection_ticker: str | None = None
+    mve_selected_legs: list[dict] = Field(default_factory=list)
+
+    @property
+    def is_parlay(self) -> bool:
+        return bool(self.mve_collection_ticker or self.mve_selected_legs)
+
+    def _dollars_to_cents(self, value: str | None) -> int | None:
+        if value is None:
+            return None
+        try:
+            return round(float(value) * 100)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def yes_bid(self) -> int | None:
+        return self._dollars_to_cents(self.yes_bid_dollars)
+
+    @property
+    def yes_ask(self) -> int | None:
+        return self._dollars_to_cents(self.yes_ask_dollars)
+
+    @property
+    def last_price(self) -> int | None:
+        return self._dollars_to_cents(self.last_price_dollars)
 
     @property
     def mid_price_cents(self) -> int | None:
-        """Midpoint of best YES bid/ask in cents."""
         if self.yes_bid is not None and self.yes_ask is not None:
             return (self.yes_bid + self.yes_ask) // 2
         return self.last_price
 
     @property
     def mid_price(self) -> float | None:
-        """Midpoint as a probability [0..1]."""
         mid = self.mid_price_cents
         return mid / 100.0 if mid is not None else None
 

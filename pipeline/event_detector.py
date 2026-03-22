@@ -85,27 +85,107 @@ _KEYWORD_CATEGORIES: dict[str, tuple[float, list[str]]] = {
 _MAX_KEYWORD_SCORE = sum(w for w, _ in _KEYWORD_CATEGORIES.values())
 
 
-#TODO: investigate into this further
 # ── NLP prototype sentences ────────────────────────────────────────────────────
 # These are prototype headlines representing the kinds of events that move
 # prediction markets. The NLP score is the max cosine similarity of the
 # input headline against all prototypes.
 _NLP_PROTOTYPES = [
-    "Hurricane makes landfall on the Florida coast",
+    # ── Weather / Natural Disasters ──
+    "Hurricane makes landfall on the Florida coast causing widespread damage",
+    "Category 4 hurricane intensifies and threatens Gulf Coast communities",
+    "Tropical storm upgraded to hurricane status in the Atlantic",
+    "Powerful earthquake strikes major city leaving thousands homeless",
+    "Magnitude 7 earthquake hits Pacific Coast triggering tsunami warning",
+    "Tornado outbreak devastates towns across the Midwest",
+    "Wildfire spreads rapidly destroying thousands of acres in California",
+    "Flash floods force mass evacuations across Southern states",
+    "Blizzard shuts down major cities along the Northeast corridor",
+    "Record-breaking drought declared in Western states",
+    "Governor declares state of emergency after severe storm",
+    "Levee breaches flood major metropolitan area",
+
+    # ── Federal Reserve / Monetary Policy ──
     "Federal Reserve raises interest rates by 50 basis points",
-    "President signs executive order on immigration",
-    "Congress passes major legislation on healthcare",
-    "Earthquake hits major city causing widespread damage",
-    "Military conflict escalates between two countries",
-    "Candidate wins election in unexpected result",
-    "Supreme Court issues landmark ruling",
-    "FDA approves new drug treatment",
-    "Economic data shows unexpected inflation spike",
-    "Major tornado touches down causing destruction",
-    "Country imposes new economic sanctions",
-    "Government announces emergency measures",
-    "Natural disaster triggers evacuation orders",
-    "Election results show shift in polls",
+    "Fed cuts interest rates to combat slowing economic growth",
+    "Federal Reserve holds rates steady at FOMC meeting",
+    "Jerome Powell signals rate hike in upcoming Fed meeting",
+    "FOMC minutes reveal hawkish stance on inflation",
+    "Fed chair hints at end of rate hiking cycle",
+
+    # ── Economic Indicators ──
+    "US inflation rate jumps unexpectedly to highest level in decades",
+    "CPI report shows inflation cooling more than expected",
+    "GDP growth slows sharply raising recession fears",
+    "US economy adds fewer jobs than forecast in monthly report",
+    "Unemployment rate rises to highest level in years",
+    "Jobs report beats expectations with strong payroll gains",
+    "Consumer spending falls sharply amid economic uncertainty",
+    "US enters technical recession with two consecutive quarters of negative GDP",
+    "Debt ceiling crisis threatens US government default",
+    "Congress fails to pass budget triggering government shutdown",
+    "Treasury yields surge as bond market sells off",
+
+    # ── Politics / Elections ──
+    "Presidential candidate wins key primary election in swing state",
+    "Poll shows presidential race tightening in battleground states",
+    "President signs sweeping executive order on immigration policy",
+    "Senate confirms Supreme Court justice in party-line vote",
+    "House passes major spending bill with bipartisan support",
+    "President faces impeachment proceedings in Congress",
+    "Senator announces resignation amid scandal",
+    "Governor signs landmark legislation into law",
+    "Election officials certify presidential election results",
+    "Candidate drops out of presidential race ahead of primary",
+    "Special election held to fill vacant Senate seat",
+    "Supreme Court agrees to hear major constitutional case",
+
+    # ── Supreme Court / Legal ──
+    "Supreme Court issues landmark ruling overturning precedent",
+    "Supreme Court rules on abortion rights nationwide",
+    "High court strikes down federal law as unconstitutional",
+    "Federal judge blocks administration policy pending appeal",
+    "Indictment filed against sitting politician on federal charges",
+    "Verdict reached in high-profile criminal trial",
+
+    # ── Geopolitics / Conflict ──
+    "Russia launches military offensive against Ukraine",
+    "Ceasefire agreement reached ending months of fighting",
+    "Country announces nuclear weapons test raising global alarm",
+    "NATO activates Article 5 after attack on member nation",
+    "US military strikes target in Middle East",
+    "Sanctions imposed targeting country over nuclear program",
+    "Coup attempt overthrows government in sudden military takeover",
+    "Peace talks collapse as fighting resumes between warring parties",
+    "North Korea fires ballistic missile over Japanese waters",
+    "Iran nuclear deal collapses after US withdrawal",
+
+    # ── Health / FDA ──
+    "FDA approves breakthrough drug treatment for major disease",
+    "WHO declares international public health emergency",
+    "Novel virus outbreak spreads across multiple countries",
+    "Vaccine shows high efficacy in large clinical trial results",
+    "FDA issues warning recalling widely used medication",
+    "New pandemic declared as disease spreads globally",
+
+    # ── Crypto / Financial Markets ──
+    "Bitcoin price surges past all-time high record",
+    "Bitcoin crashes amid regulatory crackdown",
+    "SEC approves Bitcoin ETF for US markets",
+    "Major cryptocurrency exchange files for bankruptcy",
+    "Stock market plunges on recession fears",
+    "S&P 500 enters bear market territory with steep decline",
+
+    # ── Energy ──
+    "OPEC announces major production cut driving oil prices higher",
+    "Oil prices spike after attack on major pipeline infrastructure",
+    "US bans Russian oil imports over military aggression",
+
+    # ── Sports ──
+    "Team wins Super Bowl championship defeating rival in overtime",
+    "NBA Finals winner crowned after seven-game series",
+    "World Series champion emerges after dramatic playoff run",
+    "US wins gold medal at Olympic Games",
+    "World Cup final decided on penalty kicks",
 ]
 
 

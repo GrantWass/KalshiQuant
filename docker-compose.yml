@@ -31,7 +31,12 @@ services:
     volumes:
       # Persist FAISS index across container restarts
       - faiss_data:/app/faiss_data
+      # Mount private key (gitignored, never baked into image)
+      - ./kalshi_private.pem:/app/kalshi_private.pem:ro
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     # Override DATABASE_URL to use Docker service name
     environment:
       DATABASE_URL: postgresql://kalshi:${POSTGRES_PASSWORD:-kalshi}@postgres:5432/kalshiquant

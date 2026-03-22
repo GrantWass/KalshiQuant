@@ -2,10 +2,9 @@
 kalshi/client.py — Async Kalshi REST API client.
 
 Handles:
-  - Authentication headers (via KalshiTokenManager)
+  - Authentication headers (via KalshiSigner — RSA-PSS per request)
   - Rate limiting (asyncio.Semaphore: max concurrent requests)
   - Automatic retry with exponential backoff on 429 (rate limited) and 503 (server error)
-  - Automatic token refresh on 401, then one retry
 
 Usage:
     client = KalshiClient()
@@ -17,13 +16,15 @@ import asyncio
 import logging
 import aiohttp
 from config.settings import settings
-from kalshi.auth import token_manager
+from kalshi.auth import signer
 from kalshi.models import Market, OrderRequest, OrderResponse, Orderbook, Portfolio, Position
 
 logger = logging.getLogger(__name__)
 
 # Maximum number of markets fetched per page from the Kalshi API.
-_PAGE_SIZE = 100
+# Kalshi supports up to 1000 per page — using a large page size cuts the
+# number of API round-trips for the full 33k market list from ~330 to ~34.
+_PAGE_SIZE = 1000
 
 # Delays (seconds) for exponential backoff: attempt 0 → 1s, 1 → 2s, 2 → 4s
 _RETRY_DELAYS = [1, 2, 4]
@@ -38,7 +39,6 @@ class KalshiClient:
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                base_url=settings.KALSHI_BASE_URL,
                 timeout=aiohttp.ClientTimeout(total=15),
             )
         return self._session
@@ -54,15 +54,13 @@ class KalshiClient:
         *,
         params: dict | None = None,
         json: dict | None = None,
-        retry_on_401: bool = True,
     ) -> dict:
         """
         Make an authenticated API request with retry logic.
 
         Retry policy:
           - 429 or 503: exponential backoff (up to 3 attempts)
-          - 401: force token refresh and retry once
-          - Other 4xx: raise immediately (client error, no retry)
+          - Other 4xx/5xx: raise immediately
         """
         session = await self._get_session()
 
@@ -70,24 +68,18 @@ class KalshiClient:
             if delay:
                 await asyncio.sleep(delay)
 
-            token = await token_manager.get_valid_token()
-            headers = {"Authorization": f"Bearer {token}"}
+            # path is e.g. "/markets"; signer needs the full API path for signing
+            api_path = f"/trade-api/v2{path}"
+            headers = signer.get_auth_headers(method, api_path)
+            url = f"{settings.KALSHI_BASE_URL}{path}"
 
             async with self._semaphore:
                 try:
                     async with session.request(
-                        method, path, params=params, json=json, headers=headers
+                        method, url, params=params, json=json, headers=headers
                     ) as resp:
                         if resp.status == 200:
                             return await resp.json()
-
-                        if resp.status == 401 and retry_on_401:
-                            logger.warning("Received 401; forcing token refresh.")
-                            await token_manager.force_refresh()
-                            # Retry once with the new token (set retry_on_401=False to avoid loop)
-                            return await self._request(
-                                method, path, params=params, json=json, retry_on_401=False
-                            )
 
                         if resp.status in (429, 503):
                             logger.warning(

@@ -31,13 +31,13 @@ logger = logging.getLogger(__name__)
 # Free RSS feeds — no authentication, no rate limits
 # Add more feeds here or in .env to expand coverage
 _FEEDS = [
-    ("rss_ap",  "https://feeds.apnews.com/rss/topnews"),
-    ("rss_ap",  "https://feeds.apnews.com/rss/politics"),
-    ("rss_ap",  "https://feeds.apnews.com/rss/business"),
-    ("rss_ap",  "https://feeds.apnews.com/rss/weather"),
     ("rss_bbc", "https://feeds.bbci.co.uk/news/rss.xml"),
     ("rss_bbc", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("rss_bbc", "https://feeds.bbci.co.uk/news/business/rss.xml"),
+    ("rss_bbc", "https://feeds.bbci.co.uk/news/politics/rss.xml"),
+    ("rss_bbc", "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
+    ("rss_npr", "https://www.npr.org/rss/rss.php?id=1001"),   # NPR News
+    ("rss_npr", "https://www.npr.org/rss/rss.php?id=1003"),   # NPR Politics
 ]
 
 

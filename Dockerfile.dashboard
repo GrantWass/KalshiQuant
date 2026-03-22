@@ -23,4 +23,4 @@ port = 8501
 gatherUsageStats = false
 EOF
 
-CMD ["streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["sh", "-c", "PYTHONPATH=/app streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0"]
