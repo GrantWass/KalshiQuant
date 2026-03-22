@@ -55,8 +55,13 @@ else:
     display_df = df.drop(columns=["id", "body"], errors="ignore").copy()
     display_df.insert(0, "status", display_df["filtered_out"].map({False: "✓", True: "✗"}))
 
+    def _color_status(col):
+        return col.map({"✓": "color: #2ecc71; font-weight: bold", "✗": "color: #e74c3c; font-weight: bold"})
+
+    styled_df = display_df.style.apply(_color_status, subset=["status"])
+
     selection = st.dataframe(
-        display_df,
+        styled_df,
         use_container_width=True,
         on_select="rerun",
         selection_mode="single-row",
