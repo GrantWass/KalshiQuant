@@ -81,8 +81,22 @@ class MarketMatcher:
         results = await faiss_index.search(query_embedding, k=settings.SIMILARITY_TOP_K)
 
         if not results:
-            # No markets matched above the similarity threshold — drop item
-            logger.debug("No market matches for: %s", item.headline[:60])
+            # No markets matched above the similarity threshold — store near-misses for visibility
+            if item.db_id:
+                near_misses = await faiss_index.search(query_embedding, k=settings.SIMILARITY_TOP_K, min_score=0.0)
+                for score, meta in near_misses:
+                    await insert_market_match(
+                        news_event_id=item.db_id,
+                        market_ticker=meta["ticker"],
+                        market_title=meta["title"],
+                        market_category=meta.get("category"),
+                        similarity_score=score,
+                        below_threshold=True,
+                    )
+                logger.debug(
+                    "No market matches for: %s (stored %d near-misses)",
+                    item.headline[:60], len(near_misses),
+                )
             return
 
         # Build MarketMatch objects from FAISS results

@@ -31,13 +31,43 @@ logger = logging.getLogger(__name__)
 # Free RSS feeds — no authentication, no rate limits
 # Add more feeds here or in .env to expand coverage
 _FEEDS = [
+    # BBC
     ("rss_bbc", "https://feeds.bbci.co.uk/news/rss.xml"),
     ("rss_bbc", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("rss_bbc", "https://feeds.bbci.co.uk/news/business/rss.xml"),
     ("rss_bbc", "https://feeds.bbci.co.uk/news/politics/rss.xml"),
     ("rss_bbc", "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
+    ("rss_bbc", "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"),
+    ("rss_bbc", "https://feeds.bbci.co.uk/news/technology/rss.xml"),
+    # NPR
     ("rss_npr", "https://www.npr.org/rss/rss.php?id=1001"),   # NPR News
     ("rss_npr", "https://www.npr.org/rss/rss.php?id=1003"),   # NPR Politics
+    ("rss_npr", "https://www.npr.org/rss/rss.php?id=1014"),   # NPR Economy
+    ("rss_npr", "https://www.npr.org/rss/rss.php?id=1056"),   # NPR Elections
+    # Politico
+    ("rss_politico", "https://rss.politico.com/politics-news.xml"),
+    ("rss_politico", "https://rss.politico.com/economy.xml"),
+    # CNBC
+    ("rss_cnbc", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),  # top news
+    ("rss_cnbc", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"),   # economy
+    ("rss_cnbc", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"),   # politics
+    # MarketWatch
+    ("rss_marketwatch", "https://feeds.marketwatch.com/marketwatch/topstories/"),
+    ("rss_marketwatch", "https://feeds.marketwatch.com/marketwatch/marketpulse/"),
+    # Washington Post
+    ("rss_wapo", "https://feeds.washingtonpost.com/rss/politics"),
+    ("rss_wapo", "https://feeds.washingtonpost.com/rss/business"),
+    # New York Times
+    ("rss_nyt", "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml"),
+    ("rss_nyt", "https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml"),
+    ("rss_nyt", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
+    # Axios
+    ("rss_axios", "https://api.axios.com/feed/"),
+    # The Hill
+    ("rss_thehill", "https://thehill.com/homenews/feed/"),
+    ("rss_thehill", "https://thehill.com/policy/finance/feed/"),
+    # Roll Call (congressional)
+    ("rss_rollcall", "https://rollcall.com/feed/"),
 ]
 
 

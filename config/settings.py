@@ -166,8 +166,26 @@ class Settings(BaseSettings):
     # RSS (AP, BBC): articles typically appear 15-30 min after publication.
     RSS_POLL_INTERVAL: int = 90
 
+    # Reddit: hot posts update frequently; 2 min balances freshness vs rate limits.
+    REDDIT_POLL_INTERVAL: int = 120
+
+    # Government APIs (FRED, SEC EDGAR, Congress.gov): data releases are infrequent;
+    # 5 min is plenty to catch them quickly without hammering free-tier endpoints.
+    GOVERNMENT_POLL_INTERVAL: int = 300
+
 
     # ── Third-Party API Keys ──────────────────────────────────────────────────
+
+    # FRED (Federal Reserve Economic Data) — free at fred.stlouisfed.org/docs/api/api_key.html
+    FRED_API_KEY: str = ""
+
+    # Congress.gov — free at api.congress.gov
+    CONGRESS_API_KEY: str = ""
+
+    # Reddit OAuth — register a "script" app at reddit.com/prefs/apps (free, read-only)
+    # Both must be set for Reddit ingestion to activate.
+    REDDIT_CLIENT_ID: str = ""
+    REDDIT_CLIENT_SECRET: str = ""
 
 
     # ── Monitoring ────────────────────────────────────────────────────────────

@@ -63,7 +63,9 @@ from embeddings.market_index_builder import load_or_build_index, refresh_loop
 from kalshi.client import KalshiClient
 from kalshi.websocket import KalshiWebSocketManager
 from news.gdelt import GDELTSource
+from news.government import GovernmentSource
 from news.nws import NWSSource
+from news.reddit import RedditSource
 from news.rss import RSSSource
 from pipeline.deduplicator import Deduplicator
 from pipeline.decision_engine import DecisionEngine
@@ -148,6 +150,8 @@ async def run() -> None:
         NWSSource(),
         GDELTSource(),
         RSSSource(),
+        RedditSource(),
+        GovernmentSource(),
     ]
 
     # ── Counters for heartbeat ─────────────────────────────────────────────────

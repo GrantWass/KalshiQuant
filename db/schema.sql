@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS market_matches (
     market_title     TEXT         NOT NULL,
     market_category  VARCHAR(64),
     similarity_score FLOAT        NOT NULL,  -- cosine similarity [0..1]
+    below_threshold  BOOLEAN      NOT NULL DEFAULT FALSE,  -- TRUE = near-miss, did not pass SIMILARITY_MIN_SCORE
 
     matched_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );

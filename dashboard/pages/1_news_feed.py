@@ -10,16 +10,55 @@ st.set_page_config(layout="wide")
 st.title("News Feed")
 st.caption("All news items ingested from all sources. Click a row to see details.")
 
-# ── Source summary metrics ──────────────────────────────────────────────────────
+# ── Source summary ──────────────────────────────────────────────────────────────
 counts = get_news_source_counts()
 if not counts.empty:
-    cols = st.columns(len(counts))
-    for i, (_, row) in enumerate(counts.iterrows()):
-        cols[i].metric(
-            label=row["source"],
-            value=f"{int(row['total'])} total",
-            delta=f"{int(row['passed'])} passed",
+    # Classify each source into a group
+    def _group(source: str) -> str:
+        if source.startswith("reddit_"):    return "Reddit"
+        if source.startswith("rss_"):       return "RSS"
+        if source in ("fred", "sec_edgar", "congress"): return "Government"
+        if source == "nws":                 return "NWS"
+        if source == "gdelt":               return "GDELT"
+        return "Other"
+
+    counts["group"] = counts["source"].apply(_group)
+    counts["source_label"] = counts["source"].str.replace("rss_", "", regex=False).str.replace("reddit_", "r/", regex=False)
+
+    # Top-line totals per group
+    totals = counts.groupby("group")[["total", "passed"]].sum().reset_index()
+    totals["pass_rate"] = (100 * totals["passed"] / totals["total"].clip(lower=1)).round(1)
+    totals = totals.sort_values("total", ascending=False)
+
+    group_cols = st.columns(len(totals))
+    for i, (_, row) in enumerate(totals.iterrows()):
+        group_cols[i].metric(
+            label=row["group"],
+            value=f"{int(row['total'])} items",
+            delta=f"{row['pass_rate']}% pass rate",
         )
+
+    st.divider()
+
+    # Per-source breakdown table
+    with st.expander("Source breakdown (last 24h)", expanded=False):
+        display_counts = counts[["group", "source_label", "total", "passed", "filtered", "pass_rate"]].copy()
+        display_counts = display_counts.sort_values(["group", "total"], ascending=[True, False])
+
+        st.dataframe(
+            display_counts,
+            use_container_width=True,
+            column_config={
+                "group":        st.column_config.TextColumn("Group", width="small"),
+                "source_label": st.column_config.TextColumn("Source"),
+                "total":        st.column_config.NumberColumn("Total", width="small"),
+                "passed":       st.column_config.NumberColumn("Passed", width="small"),
+                "filtered":     st.column_config.NumberColumn("Filtered", width="small"),
+                "pass_rate":    st.column_config.ProgressColumn("Pass Rate %", min_value=0, max_value=100, format="%.1f%%"),
+            },
+            hide_index=True,
+        )
+
     st.divider()
 
 # ── Filters ─────────────────────────────────────────────────────────────────────
@@ -27,7 +66,7 @@ fc1, fc2, fc3 = st.columns([2, 2, 1])
 
 with fc1:
     all_sources = sorted(counts["source"].tolist()) if not counts.empty else []
-    selected_sources = st.multiselect("Sources", all_sources, default=all_sources, placeholder="All sources")
+    selected_sources = st.multiselect("Sources", all_sources, default=all_sources, placeholder="All sources", format_func=lambda s: s.replace("rss_", "").replace("reddit_", "r/"))
 
 with fc2:
     status_filter = st.radio("Status", ["All", "Passed", "Filtered"], horizontal=True)

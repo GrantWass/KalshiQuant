@@ -267,7 +267,10 @@ def _headline_from_url(url: str) -> str:
 
         # Skip pure date segments like "20250321" or "2025"
         if re.fullmatch(r"\d{4,14}", slug):
-            # Try the second-to-last segment
+            slug = segments[-2] if len(segments) >= 2 else ""
+
+        # Skip UUID-based filename slugs like "article_d958c61a-21e5-48b4-8178-3657f6f50409.html"
+        if re.search(r"[0-9a-f]{8}[-_][0-9a-f]{4}", slug, re.IGNORECASE):
             slug = segments[-2] if len(segments) >= 2 else ""
 
         if not slug:

@@ -9,6 +9,7 @@ pipeline's in-memory state, ensuring zero coupling between display and execution
 """
 
 import os
+import warnings
 import pandas as pd
 import psycopg2
 import psycopg2.extras
@@ -27,7 +28,9 @@ def _query_df(sql: str, params=None) -> pd.DataFrame:
     """Execute a SQL query and return a pandas DataFrame. Returns empty DataFrame on error."""
     try:
         conn = _get_connection()
-        df = pd.read_sql_query(sql, conn, params=params)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            df = pd.read_sql_query(sql, conn, params=params)
         conn.close()
         return df
     except Exception:
@@ -62,10 +65,15 @@ def get_recent_news(limit: int = 200) -> pd.DataFrame:
 def get_news_source_counts() -> pd.DataFrame:
     return _query_df(
         """
-        SELECT source,
-               COUNT(*) AS total,
-               SUM(CASE WHEN filtered_out THEN 0 ELSE 1 END) AS passed,
-               SUM(CASE WHEN filtered_out THEN 1 ELSE 0 END) AS filtered
+        SELECT
+            source,
+            COUNT(*)                                                      AS total,
+            SUM(CASE WHEN NOT filtered_out THEN 1 ELSE 0 END)            AS passed,
+            SUM(CASE WHEN filtered_out THEN 1 ELSE 0 END)                AS filtered,
+            ROUND(
+                100.0 * SUM(CASE WHEN NOT filtered_out THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0), 1
+            )                                                             AS pass_rate
         FROM news_events
         WHERE fetched_at >= NOW() - INTERVAL '24 hours'
         GROUP BY source
@@ -118,6 +126,100 @@ def get_detection_detail(limit: int = 100) -> pd.DataFrame:
 
 
 # ── Market Matches ────────────────────────────────────────────────────────────
+
+def get_events_with_matches(limit: int = 100) -> pd.DataFrame:
+    """One row per news event that reached the market matcher, with aggregate match stats."""
+    return _query_df(
+        """
+        SELECT
+            ne.id                                               AS news_event_id,
+            ne.fetched_at AT TIME ZONE 'UTC'                   AS fetched_at,
+            ne.source,
+            ne.headline,
+            ne.url,
+            ROUND(ne.event_score::numeric, 3)                  AS event_score,
+            COUNT(mm.id)                                        AS match_count,
+            ROUND(MAX(mm.similarity_score)::numeric, 3)        AS best_similarity,
+            ROUND(AVG(mm.similarity_score)::numeric, 3)        AS avg_similarity
+        FROM news_events ne
+        JOIN market_matches mm ON mm.news_event_id = ne.id
+        WHERE ne.filtered_out = false
+          AND mm.below_threshold = false
+        GROUP BY ne.id, ne.fetched_at, ne.source, ne.headline, ne.url, ne.event_score
+        ORDER BY ne.fetched_at DESC
+        LIMIT %s
+        """,
+        (limit,),
+    )
+
+
+def get_matches_for_event(news_event_id: str) -> pd.DataFrame:
+    """All market matches for a specific news event, sorted by similarity descending."""
+    return _query_df(
+        """
+        SELECT
+            mm.market_ticker,
+            mm.market_title,
+            ROUND(mm.similarity_score::numeric, 3)  AS similarity_score,
+            td.action                                AS decision_action,
+            td.side                                  AS decision_side,
+            td.contracts                             AS decision_contracts,
+            td.price_cents                           AS decision_price_cents,
+            ROUND(td.edge::numeric, 3)               AS decision_edge,
+            ROUND(td.confidence::numeric, 3)         AS decision_confidence,
+            td.rejection_reasons
+        FROM market_matches mm
+        LEFT JOIN trade_decisions td ON td.market_ticker = mm.market_ticker
+            AND td.decided_at BETWEEN mm.matched_at AND mm.matched_at + INTERVAL '30 seconds'
+        WHERE mm.news_event_id = %s
+        ORDER BY mm.similarity_score DESC
+        """,
+        (news_event_id,),
+    )
+
+
+def get_near_miss_events(limit: int = 100) -> pd.DataFrame:
+    """Events that passed detection but had no matches above the similarity threshold."""
+    return _query_df(
+        """
+        SELECT
+            ne.id                                               AS news_event_id,
+            ne.fetched_at AT TIME ZONE 'UTC'                   AS fetched_at,
+            ne.source,
+            ne.headline,
+            ne.url,
+            ROUND(ne.event_score::numeric, 3)                  AS event_score,
+            ROUND(MAX(mm.similarity_score)::numeric, 3)        AS best_similarity
+        FROM news_events ne
+        JOIN market_matches mm ON mm.news_event_id = ne.id AND mm.below_threshold = true
+        WHERE ne.filtered_out = false
+          AND ne.id NOT IN (
+              SELECT DISTINCT news_event_id FROM market_matches WHERE below_threshold = false
+          )
+        GROUP BY ne.id, ne.fetched_at, ne.source, ne.headline, ne.url, ne.event_score
+        ORDER BY ne.fetched_at DESC
+        LIMIT %s
+        """,
+        (limit,),
+    )
+
+
+def get_near_misses_for_event(news_event_id: str) -> pd.DataFrame:
+    """Top near-miss markets for an event that didn't pass the similarity threshold."""
+    return _query_df(
+        """
+        SELECT
+            mm.market_ticker,
+            mm.market_title,
+            ROUND(mm.similarity_score::numeric, 3) AS similarity_score
+        FROM market_matches mm
+        WHERE mm.news_event_id = %s
+          AND mm.below_threshold = true
+        ORDER BY mm.similarity_score DESC
+        """,
+        (news_event_id,),
+    )
+
 
 def get_recent_matches(limit: int = 100) -> pd.DataFrame:
     return _query_df(

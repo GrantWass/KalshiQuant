@@ -83,7 +83,7 @@ class FAISSIndex:
             self.build(embeddings, metadata)
         logger.info("FAISS index atomically refreshed: %d markets.", self._total)
 
-    async def search(self, query: np.ndarray, k: int) -> list[tuple[float, dict]]:
+    async def search(self, query: np.ndarray, k: int, min_score: float | None = None) -> list[tuple[float, dict]]:
         """
         Search for the top-k most similar markets to a query embedding.
 
@@ -109,11 +109,12 @@ class FAISSIndex:
         scores = scores_2d[0].tolist()
         indices = indices_2d[0].tolist()
 
+        threshold = min_score if min_score is not None else settings.SIMILARITY_MIN_SCORE
         results = []
         for score, idx in zip(scores, indices):
             if idx < 0:   # FAISS returns -1 for unfilled slots
                 continue
-            if score < settings.SIMILARITY_MIN_SCORE:
+            if score < threshold:
                 continue
             results.append((float(score), self._metadata[idx]))
 

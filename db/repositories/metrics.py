@@ -90,16 +90,17 @@ async def insert_market_match(
     market_title: str,
     market_category: str | None,
     similarity_score: float,
+    below_threshold: bool = False,
 ) -> None:
     """Record a FAISS market match result."""
     pool = await get_pool()
     await pool.execute(
         """
         INSERT INTO market_matches
-            (news_event_id, market_ticker, market_title, market_category, similarity_score)
-        VALUES ($1,$2,$3,$4,$5)
+            (news_event_id, market_ticker, market_title, market_category, similarity_score, below_threshold)
+        VALUES ($1,$2,$3,$4,$5,$6)
         """,
-        news_event_id, market_ticker, market_title, market_category, similarity_score,
+        news_event_id, market_ticker, market_title, market_category, similarity_score, below_threshold,
     )
 
 
