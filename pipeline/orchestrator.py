@@ -150,7 +150,9 @@ async def run() -> None:
         NWSSource(),
         GDELTSource(),
         RSSSource(),
-        RedditSource(),
+        # RedditSource() — disabled: Reddit blocks unauthenticated requests from cloud IPs.
+        # OAuth registration is currently closed (requires manual approval from Reddit).
+        # Re-enable once OAuth credentials are obtained. See TODO.md.
         GovernmentSource(),
     ]
 

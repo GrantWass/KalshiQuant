@@ -1,5 +1,13 @@
 # KalshiQuant — Signal Expansion TODO
 
+## Reddit (blocked — needs OAuth)
+
+Reddit blocks unauthenticated requests from cloud/container IPs. OAuth app registration requires manual approval from Reddit (self-service was discontinued Nov 2025). Until credentials are obtained, `RedditSource` is disabled in the orchestrator.
+
+To re-enable: apply at https://support.reddithelp.com/hc/en-us/articles/14945211791892, get `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET`, add to `.env`, uncomment `RedditSource()` in `pipeline/orchestrator.py`.
+
+---
+
 ## Reddit Keyword Search
 
 Poll `/r/all/search.json?q=<term>&sort=new` for Kalshi-relevant keywords (e.g. "federal reserve", "cpi", "hurricane", "election results") across all of Reddit. Catches relevant posts that never surface to the front page of any single subreddit. No auth needed, same public JSON API. Add as a separate `RedditSearchSource` class alongside the existing subreddit poller.
